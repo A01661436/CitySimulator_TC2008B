@@ -29,6 +29,11 @@ class BusStop(Agent):
         super().__init__(unique_id, model)
         self.occupied = False
 
+class Hospital(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(unique_id, model)
+        self.occupied = False
+
 class Roundabout(Agent):
   def __init__(self, unique_id, model):
       super().__init__(unique_id, model)
@@ -40,9 +45,6 @@ class TrafficLightAgent(Agent):
         self.orientation = orientation
         self.state = 'red'
         self.green_offset = green_offset
-
-    def change_state(self, new_state):
-        self.state = new_state
     
     def detect_emergency_vehicle(self, view_distance):
         direction = self.orientation
@@ -63,35 +65,14 @@ class TrafficLightAgent(Agent):
                         return True
         return False
 
+    def change_state(self, new_state):
+        self.state = new_state
+
     def step(self):
         if self.detect_emergency_vehicle(view_distance=3):
             self.change_state('green')
         else:
             pass
-
-class IntersectionController(Agent):
-    def __init__(self, unique_id, model, cycle_time=30):
-        super().__init__(unique_id, model)
-        self.traffic_lights = []  
-        self.cycle_time = cycle_time  
-        self.green_duration = 10  
-        self.yellow_duration = 5  
-        self.red_duration = 15  
-        self.current_cycle = 0
-    
-    def calculate_light_state(self, light):
-        if self.current_cycle >= light.green_offset and self.current_cycle < light.green_offset + self.green_duration:
-            return 'green'
-        elif self.current_cycle >= light.green_offset + self.green_duration and self.current_cycle < light.green_offset + self.green_duration + self.yellow_duration:
-            return 'yellow'
-        else:
-            return 'red'
-    
-    def step(self):
-        self.current_cycle = (self.current_cycle + 1) % self.cycle_time
-        for light in self.traffic_lights:
-            new_state = self.calculate_light_state(light)
-            light.change_state(new_state)
 
 class Car(Agent):
    def __init__(self, unique_id, model, start_parking):
@@ -106,10 +87,15 @@ class Car(Agent):
 
         if self.destination_parking:
             self.path = self.calculate_path(self.pos, self.destination_parking.pos)
-
-   def is_cell_blocked(self, pos):
-        cell_contents = self.model.grid.get_cell_list_contents(pos)
-        return any(isinstance(obj, Car) and obj.crashed for obj in cell_contents)
+    
+   def find_unique_parking(self):
+        available_parkings = [p for p in self.model.parking_agents if not p.occupied and p not in self.model.assigned_parkings and p != self.start_parking]
+        if available_parkings:
+            chosen_parking = self.random.choice(available_parkings)
+            self.model.assigned_parkings.add(chosen_parking)
+            return chosen_parking
+        else:
+            return None
 
    def calculate_path(self, start, goal):
         frontier = []
@@ -151,20 +137,13 @@ class Car(Agent):
    def heuristic(self, a, b):
        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-   def find_unique_parking(self):
-    available_parkings = [p for p in self.model.parking_agents if not p.occupied and p not in self.model.assigned_parkings and p != self.start_parking]
-    if available_parkings:
-        chosen_parking = self.random.choice(available_parkings)
-        self.model.assigned_parkings.add(chosen_parking)
-        return chosen_parking
-    else:
-        return None
+   def is_cell_blocked(self, pos):
+        cell_contents = self.model.grid.get_cell_list_contents(pos)
+        return any(isinstance(obj, Car) and obj.crashed for obj in cell_contents)
     
    def recalculate_path(self):
         if self.destination_parking:
             self.path = self.calculate_path(self.pos, self.destination_parking.pos)
-        else:
-            print(f"Coche {self.unique_id} no tiene un estacionamiento asignado para recalcular la ruta.")
 
    def check_for_crashes(self):
     cell_contents = self.model.grid.get_cell_list_contents(self.pos)
@@ -172,7 +151,6 @@ class Car(Agent):
     if len(cars_in_cell) > 1:
         for car in cars_in_cell:
             car.crashed = True
-        print(f"Choque detectado en {self.pos} involucrando {len(cars_in_cell)} vehículos (Car y Moto).")
 
    def move(self):
         if self.crashed:
@@ -187,7 +165,6 @@ class Car(Agent):
             cell_contents = self.model.grid.get_cell_list_contents(next_step)
             crash_here = any(isinstance(obj, Car) and obj.crashed for obj in cell_contents)
             if crash_here:
-                print(f"Coche {self.unique_id} detectó un choque en {next_step}.")
                 self.recalculate_path()
                 return
 
@@ -275,6 +252,21 @@ class Moto(Agent):
     def heuristic(self, a, b):
        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
+    def is_cell_blocked(self, pos):
+        cell_contents = self.model.grid.get_cell_list_contents(pos)
+        return any(isinstance(obj, Car) and obj.crashed for obj in cell_contents)
+    
+    def recalculate_path(self):
+        if self.destination_restaurante:
+            self.path = self.calculate_path(self.pos, self.destination_restaurante.pos)
+
+    def check_for_crashes(self):
+        cell_contents = self.model.grid.get_cell_list_contents(self.pos)
+        motos_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto))]
+        if len(motos_in_cell) > 1:
+            for moto in motos_in_cell:
+                moto.crashed = True
+    
     def move(self):
         if self.crashed:
             return
@@ -294,28 +286,6 @@ class Moto(Agent):
             self.steps_taken += 1
 
             self.check_for_crashes()
-
-    def is_cell_blocked(self, pos):
-        cell_contents = self.model.grid.get_cell_list_contents(pos)
-        return any(isinstance(obj, Car) and obj.crashed for obj in cell_contents)
-
-    def check_for_crashes(self):
-        cell_contents = self.model.grid.get_cell_list_contents(self.pos)
-        motos_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto))]
-        if len(motos_in_cell) > 1:
-            for moto in motos_in_cell:
-                moto.crashed = True
-                print(f"Moto {moto.unique_id} cambió su estado a 'crashed' en la posición {self.pos}.")
-    
-    def recalculate_path(self):
-        if self.destination_restaurante:
-            self.path = self.calculate_path(self.pos, self.destination_restaurante.pos)
-            if not self.path:
-                print(f"Moto {self.unique_id} no encuentra un camino alternativo.")
-            else:
-                print(f"Moto {self.unique_id} ha recalculado su ruta.")
-        else:
-            print(f"Moto {self.unique_id} no tiene un destino asignado.")
 
     def step(self):
         if self.crashed:
@@ -405,6 +375,21 @@ class Bus(Agent):
     def heuristic(self, a, b):
         return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
+    def is_cell_blocked(self, pos):
+        cell_contents = self.model.grid.get_cell_list_contents(pos)
+        return any(isinstance(obj, (Car, Moto, Bus)) and obj.crashed for obj in cell_contents)
+
+    def recalculate_path(self):
+        if self.destination_bus_stop:
+            self.path = self.calculate_path(self.pos, self.destination_bus_stop.pos)
+    
+    def check_for_crashes(self):
+        cell_contents = self.model.grid.get_cell_list_contents(self.pos)
+        vehicles_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto, Bus))]
+        if len(vehicles_in_cell) > 1:
+            for vehicle in vehicles_in_cell:
+                vehicle.crashed = True
+    
     def move(self):
         if self.crashed:
             return
@@ -424,28 +409,6 @@ class Bus(Agent):
             self.steps_taken += 1
 
             self.check_for_crashes()
-
-    def is_cell_blocked(self, pos):
-        cell_contents = self.model.grid.get_cell_list_contents(pos)
-        return any(isinstance(obj, (Car, Moto, Bus)) and obj.crashed for obj in cell_contents)
-
-    def check_for_crashes(self):
-        cell_contents = self.model.grid.get_cell_list_contents(self.pos)
-        vehicles_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto, Bus))]
-        if len(vehicles_in_cell) > 1:
-            for vehicle in vehicles_in_cell:
-                vehicle.crashed = True
-                print(f"Choque detectado en {self.pos} involucrando {len(vehicles_in_cell)} vehículos.")
-
-    def recalculate_path(self):
-        if self.destination_bus_stop:
-            self.path = self.calculate_path(self.pos, self.destination_bus_stop.pos)
-            if not self.path:
-                print(f"Bus {self.unique_id} no encuentra un camino alternativo.")
-            else:
-                print(f"Bus {self.unique_id} ha recalculado su ruta.")
-        else:
-            print(f"Bus {self.unique_id} no tiene un destino asignado.")
 
     def step(self):
         if self.crashed:
@@ -480,25 +443,31 @@ class Bus(Agent):
         self.check_for_crashes()
 
 class EmergencyVehicle(Agent):
-    def __init__(self, unique_id, model, start_position, end_position):
+    def __init__(self, unique_id, model, start_hospital, speed, wait_time=5):
         super().__init__(unique_id, model)
-        self.pos = start_position
-        self.end_position = end_position
-        self.path = self.calculate_path(start_position, end_position)
-        self.is_emergency_active = True
-    
-    def recalculate_path(self):
-        self.path = self.calculate_path(self.pos, self.end_position)
-        if not self.path:
-            print(f"Vehículo de emergencia {self.unique_id} no puede encontrar una ruta.")
-        else:
-            print(f"Nueva ruta para el vehículo de emergencia {self.unique_id}: {self.path}")
-    
-    def is_cell_blocked(self, pos):
-        cell_contents = self.model.grid.get_cell_list_contents(pos)
-        return any(isinstance(obj, Car) and obj.crashed or isinstance(obj, EmergencyVehicle) for obj in cell_contents)
+        self.pos = start_hospital.pos
+        self.start_hospital = start_hospital
+        self.destination_hospital = self.find_unique_hospital()
+        self.path = []
+        self.steps_taken = 0
+        self.has_arrived = False
+        self.crashed = False
+        self.speed = speed
+        self.wait_time = wait_time
+        self.wait_counter = 0
 
-    def calculate_path(self, start, end):
+        if self.destination_hospital:
+            self.path = self.calculate_path(self.pos, self.destination_hospital.pos)
+
+    def find_unique_hospital(self):
+        available_hospitals = [h for h in self.model.hospital_agents if not h.occupied and h != self.start_hospital]
+        if available_hospitals:
+            chosen_hospital = self.random.choice(available_hospitals)
+            return chosen_hospital
+        else:
+            return None
+
+    def calculate_path(self, start, goal):
         frontier = []
         heapq.heappush(frontier, (0, start))
         came_from = {}
@@ -509,7 +478,7 @@ class EmergencyVehicle(Agent):
         while frontier:
             current = heapq.heappop(frontier)[1]
 
-            if current == end:
+            if current == goal:
                 break
 
             for next in self.model.allowed_connections.get(current, []):
@@ -519,43 +488,116 @@ class EmergencyVehicle(Agent):
                 new_cost = cost_so_far[current] + 1
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
-                    priority = new_cost + self.heuristic(end, next)
+                    priority = new_cost + self.heuristic(goal, next)
                     heapq.heappush(frontier, (priority, next))
                     came_from[next] = current
 
-
         path = []
-        current = end
-        while current != start: 
+        current = goal
+        while current is not None:
             path.append(current)
             current = came_from.get(current)
-        path.reverse() 
-        return path
+        path.reverse()
+
+        if len(path) == 1: 
+            return []
+
+        return path[1:]
 
     def heuristic(self, a, b):
         return abs(a[0] - b[0]) + abs(a[1] - b[1])
+        # ...
+
+    def is_cell_blocked(self, pos):
+        cell_contents = self.model.grid.get_cell_list_contents(pos)
+        return any(isinstance(obj, (Car, Moto, Bus)) and obj.crashed for obj in cell_contents)
+
+    def recalculate_path(self):
+        if self.destination_hospital:
+            self.path = self.calculate_path(self.pos, self.destination_hospital.pos)
+
+    def check_for_crashes(self):
+        cell_contents = self.model.grid.get_cell_list_contents(self.pos)
+        vehicles_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto, Bus))]
+        if len(vehicles_in_cell) > 1:
+            for vehicle in vehicles_in_cell:
+                vehicle.crashed = True
 
     def move(self):
-        if self.path:
+        if self.crashed:
+            return
+
+        for _ in range(self.speed):
+            if not self.path:
+                break
+
             next_step = self.path[0]
-            next_cell_contents = self.model.grid.get_cell_list_contents(next_step)
-            is_occupied = any(isinstance(agent, Car) or isinstance(agent, EmergencyVehicle) for agent in next_cell_contents)
 
-            if self.is_cell_blocked(next_step):
+            if self.model.is_red_light(next_step) or self.is_cell_blocked(next_step):
                 self.recalculate_path()
-                return
-
-            if is_occupied or self.model.is_red_light_or_crash(next_step):
-                return
+                break
 
             self.model.grid.move_agent(self, next_step)
             self.path.pop(0)
+            self.steps_taken += 1
+
+            self.check_for_crashes()
 
     def step(self):
-        self.move()
-        if self.pos == self.end_position:
-            self.model.schedule.remove(self)
-            self.model.grid.remove_agent(self)
+        if self.crashed:
+            return
+
+        if self.has_arrived:
+            if self.wait_counter < self.wait_time:
+                self.wait_counter += 1
+            else:
+                self.wait_counter = 0
+                self.has_arrived = False
+                self.destination_hospital.occupied = False
+                self.destination_hospital = self.find_unique_hospital()
+                if self.destination_hospital:
+                    self.path = self.calculate_path(self.pos, self.destination_hospital.pos)
+
+        else:
+            if not self.path:
+                self.path = self.calculate_path(self.pos, self.destination_hospital.pos)
+                if not self.path:
+                    self.destination_hospital = self.find_unique_hospital()
+                    if self.destination_hospital:
+                        self.path = self.calculate_path(self.pos, self.destination_hospital.pos)
+                    return
+
+            self.move()
+
+            if self.pos == self.destination_hospital.pos:
+                self.has_arrived = True
+                self.destination_hospital.occupied = True
+
+        self.check_for_crashes()
+
+class IntersectionController(Agent):
+    def __init__(self, unique_id, model, cycle_time=30):
+        super().__init__(unique_id, model)
+        self.traffic_lights = []  
+        self.cycle_time = cycle_time  
+        self.green_duration = 15  
+        self.yellow_duration = 10  
+        self.red_duration = 5
+        self.current_cycle = 0
+    
+    def calculate_light_state(self, light):
+        if self.current_cycle >= light.green_offset and self.current_cycle < light.green_offset + self.green_duration:
+            return 'green'
+        elif self.current_cycle >= light.green_offset + self.green_duration and self.current_cycle < light.green_offset + self.green_duration + self.yellow_duration:
+            return 'yellow'
+        else:
+            return 'red'
+    
+    def step(self):
+        self.current_cycle = (self.current_cycle + 1) % self.cycle_time
+        for light in self.traffic_lights:
+            new_state = self.calculate_light_state(light)
+            light.change_state(new_state)
 
 class City(Model):
    def __init__(self, width, height):
@@ -572,7 +614,9 @@ class City(Model):
        self.restaurante_agents = []  
        self.assigned_restaurantes = set()  
        self.bus_stop_agents = [] 
+       self.hospital_agents = []
 
+       self.place_hospitals([(9, 21), (19, 6)])
        bus_stop_positions = [(2, 5), (10, 3), (13, 16), (20, 21)] 
        self.place_bus_stops(bus_stop_positions)
 
@@ -677,7 +721,7 @@ class City(Model):
             (6, 22): [(7, 22), (6, 23)],
             (7, 22): [(8, 22), (7, 23)],
             (8, 22): [(9, 22), (8, 23)],
-            (9, 22): [(10, 22), (9, 23)],
+            (9, 22): [(10, 22), (9, 23), (9, 21)],
             (10, 22): [(11, 22), (10, 23)],
             (11, 22): [(12, 22), (11, 23), (11, 21)],
             (12, 22): [(13, 22), (12, 23)],
@@ -830,7 +874,7 @@ class City(Model):
            (18, 3): [(18, 4)], 
            (18, 4): [(18, 5)], 
            (18, 5): [(18, 6)], 
-           (18, 6): [(18, 7)], 
+           (18, 6): [(18, 7), (19, 6)], 
            (18, 7): [(18, 8)], 
            (18, 8): [(18, 9)], 
            (18, 15): [(18, 16)], 
@@ -968,7 +1012,11 @@ class City(Model):
            (2, 5): [(1, 5)], 
            (10, 3): [(11, 3)], 
            (13, 16): [(12, 16)], 
-           (20, 21): [(20, 22)]
+           (20, 21): [(20, 22)],
+
+           #Hosiptales y sus adyacentes
+           (9, 21): [(9, 22)], 
+           (19, 6): [(18, 6)]
        }
 
        for key, connections in self.allowed_connections.items():
@@ -977,42 +1025,30 @@ class City(Model):
                     print(f"Error en la conexión: {key} a {connection}, que no es una tupla.")
 
        traffic_lights_data = [
-            ((0, 21), 'norte'),
-            ((1, 21), 'norte'),
             ((4, 23), 'oeste'), 
             ((4, 22), 'oeste'), 
             ((6, 21), 'norte'), 
             ((5, 15), 'sur'), 
-            ((10, 23), 'oeste'),
-            ((10, 22), 'oeste'), 
             ((11, 15), 'sur'), 
             ((12, 21), 'norte'), 
             ((16, 22), 'oeste'), 
             ((16, 23), 'oeste'),
             ((17, 15), 'sur'),
             ((18, 21), 'norte'), 
-            ((21, 23), 'oeste'), 
-            ((21, 22), 'oeste'), 
             ((22, 15), 'sur'), 
             ((23, 15), 'sur'), 
             ((0, 8), 'norte'),
             ((1, 8), 'norte'),
-            ((2, 1), 'este'), 
-            ((2, 0), 'este'), 
             ((5, 2), 'sur'), 
             ((6, 8), 'norte'), 
             ((7, 1), 'este'),
             ((7, 0), 'este'), 
             ((11, 2), 'sur'), 
             ((12, 8), 'norte'), 
-            ((13, 1), 'este'), 
-            ((13, 0), 'este'),
             ((17, 2), 'sur'),
             ((18, 8), 'norte'), 
             ((19, 1), 'este'), 
-            ((19, 0), 'este'), 
-            ((22, 2), 'sur'), 
-            ((23, 2), 'sur')
+            ((19, 0), 'este')
         ]
 
        num_traffic_lights = len(traffic_lights_data)
@@ -1031,7 +1067,9 @@ class City(Model):
        self.place_buildings(range(2, 5), [21, 20, 19, 18, 16, 15, 8, 7, 6, 3, 2])
        self.place_buildings(range(3, 5), [17, 5])
        self.place_buildings(range(2, 4), [4])
-       self.place_buildings(range(7, 11), [21, 20, 18, 17, 16, 15, 8, 7, 5, 4, 2])
+       self.place_buildings(range(7, 11), [20, 18, 17, 16, 15, 8, 7, 5, 4, 2])
+       self.place_buildings(range(7, 9), [21])
+       self.place_buildings(range(10, 11), [21])
        self.place_buildings(range(7, 10), [3])
        self.place_buildings(range(8, 11), [19, 6])
        self.place_buildings(range(13, 14), [21])
@@ -1039,7 +1077,8 @@ class City(Model):
        self.place_buildings(range(13, 17), [20, 19, 18, 15, 8, 6, 4, 3, 2])
        self.place_buildings(range(13, 16), [17, 7])
        self.place_buildings(range(14, 17), [5, 16])
-       self.place_buildings(range(19, 22), [20, 18, 17, 16, 8, 7, 6, 5, 4, 2])
+       self.place_buildings(range(19, 22), [20, 18, 17, 16, 8, 7, 5, 4, 2])
+       self.place_buildings(range(20, 22), [6])
        self.place_buildings(range(19, 21), [19, 3])
        self.place_buildings(range(19, 20), [21, 15])
        self.place_buildings(range(21, 22), [21, 15])
@@ -1067,6 +1106,13 @@ class City(Model):
         if car.destination_parking:
             self.grid.place_agent(car, parking_agent.pos)
             self.schedule.add(car)
+        
+        # Crear y añadir los vehículos de emergencia
+       for hospital_agent in self.hospital_agents:
+            emergency_vehicle = EmergencyVehicle(self.next_id(), self, hospital_agent, speed=1)
+            if emergency_vehicle.destination_hospital:
+                self.grid.place_agent(emergency_vehicle, hospital_agent.pos)
+                self.schedule.add(emergency_vehicle)
 
    def place_buildings(self, x_range, y_positions):
        for x in x_range:
@@ -1102,6 +1148,17 @@ class City(Model):
             self.schedule.add(bus_stop)
             self.bus_stop_agents.append(bus_stop)
     
+   def place_hospitals(self, positions):
+        for x, y in positions:
+            hospital = Hospital(self.next_id(), self)
+            self.grid.place_agent(hospital, (x, y))
+            self.schedule.add(hospital)
+            self.hospital_agents.append(hospital)
+    
+   def next_id(self):
+       self.current_id += 1
+       return self.current_id
+    
    def border_positions(self):
         border_positions = []
         for x in range(self.grid.width):
@@ -1111,16 +1168,6 @@ class City(Model):
             border_positions.append((0, y))  
             border_positions.append((self.grid.width - 1, y)) 
         return border_positions
-    
-   def add_emergency_vehicle(self):
-        start_position, end_position = self.random.sample(self.border_positions(), 2)
-        emergency_vehicle = EmergencyVehicle(self.next_id(), self, start_position, end_position)
-        self.grid.place_agent(emergency_vehicle, start_position)
-        self.schedule.add(emergency_vehicle)
-
-   def next_id(self):
-       self.current_id += 1
-       return self.current_id
   
    def is_red_light(self, pos):
         cell_contents = self.grid.get_cell_list_contents([pos])
@@ -1136,6 +1183,12 @@ class City(Model):
         is_crash = len(crashed_cars) > 0
 
         return is_red_light or is_crash
+    
+   def add_emergency_vehicle(self):
+        start_position, end_position = self.random.sample(self.border_positions(), 2)
+        emergency_vehicle = EmergencyVehicle(self.next_id(), self, start_position, end_position)
+        self.grid.place_agent(emergency_vehicle, start_position)
+        self.schedule.add(emergency_vehicle)
 
    def total_steps_taken(self):
         return sum(car.steps_taken for car in self.schedule.agents if isinstance(car, Car) and car.has_arrived)
@@ -1147,14 +1200,13 @@ class City(Model):
             total_steps = self.total_steps_taken()
             print(f"Total de pasos para que todos los coches lleguen a sus destinos: {total_steps}")
             self.running = False
-       if self.random.random() < 0.05:
-            self.add_emergency_vehicle()
 
 city_model = City(24, 24)
 while city_model.running:
   city_model.step()
 
 def agent_portrayal(agent):
+    # Vehículos
     if isinstance(agent, Car):
         color = "black" if agent.crashed else "pink"
         portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": color, "r": 0.3}
@@ -1165,7 +1217,10 @@ def agent_portrayal(agent):
         color = "black" if agent.crashed else "cyan"
         portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": color, "r": 0.3}
     elif isinstance(agent, EmergencyVehicle):
-        portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": "purple", "r": 0.3}
+        color = "black" if agent.crashed else "purple"
+        portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": color, "r": 0.3}
+    
+    # Infraestructura de Tráfico y Ciudad
     elif isinstance(agent, Restaurante):
         portrayal = {"Shape": "rect", "Filled": "true", "Layer": 0, "Color": "purple", "w": 1, "h": 1}
     elif isinstance(agent, Parking):
@@ -1174,16 +1229,16 @@ def agent_portrayal(agent):
         portrayal = {"Shape": "rect", "Filled": "true", "Layer": 0, "Color": "olive", "w": 1, "h": 1}
     elif isinstance(agent, Roundabout):
         portrayal = {"Shape": "rect", "Filled": "true", "Layer": 0, "Color": "brown", "w": 1, "h": 1}
+    elif isinstance(agent, Hospital):
+        portrayal = {"Shape": "rect", "Filled": "true", "Layer": 0, "Color": "hotpink", "w": 1, "h": 1}
     elif isinstance(agent, TrafficLightAgent):
-        if agent.state == 'red':
-            color = "red"
-        elif agent.state == 'green':
-            color = "green"
-        elif agent.state == 'yellow':
-            color = "yellow"
+        color = "red" if agent.state == 'red' else ("green" if agent.state == 'green' else "yellow")
         portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": color, "r": 0.8}
+    
+    # Edificaciones
     elif isinstance(agent, Building):
         portrayal = {"Shape": "rect", "Filled": "true", "Layer": 0, "Color": "blue", "w": 1, "h": 1}
+
     return portrayal
 
 grid = CanvasGrid(agent_portrayal, 24, 24, 500, 500)
