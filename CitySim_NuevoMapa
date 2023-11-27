@@ -167,11 +167,12 @@ class Car(Agent):
             print(f"Coche {self.unique_id} no tiene un estacionamiento asignado para recalcular la ruta.")
 
    def check_for_crashes(self):
-        cell_contents = self.model.grid.get_cell_list_contents(self.pos)
-        cars_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto))]
-        if len(cars_in_cell) > 1:
-            for car in cars_in_cell:
-                car.crashed = True
+    cell_contents = self.model.grid.get_cell_list_contents(self.pos)
+    cars_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto))]
+    if len(cars_in_cell) > 1:
+        for car in cars_in_cell:
+            car.crashed = True
+        print(f"Choque detectado en {self.pos} involucrando {len(cars_in_cell)} vehículos (Car y Moto).")
 
    def move(self):
         if self.crashed:
@@ -281,14 +282,15 @@ class Moto(Agent):
         if self.crashed:
             return
 
-        for _ in range(self.speed):  # Move faster based on speed
+        for _ in range(self.speed):  # Mover más rápido basado en la velocidad
             if not self.path:
-                break  # Exit loop if path is empty
+                break  # Salir del bucle si el camino está vacío
 
             next_step = self.path[0]
 
             if self.model.is_red_light(next_step) or self.is_cell_blocked(next_step):
-                break  # Stop moving if there's a red light or a crash ahead
+                self.recalculate_path()  # Llamada a recalcular ruta
+                break  # Detener el movimiento si hay un semáforo en rojo o un choque adelante
 
             self.model.grid.move_agent(self, next_step)
             self.path.pop(0)
@@ -298,47 +300,56 @@ class Moto(Agent):
 
     def is_cell_blocked(self, pos):
         cell_contents = self.model.grid.get_cell_list_contents(pos)
-        return any((isinstance(obj, Car) or isinstance(obj, Moto)) and obj.crashed for obj in cell_contents)
+        return any(isinstance(obj, Car) and obj.crashed for obj in cell_contents)
 
     def check_for_crashes(self):
         cell_contents = self.model.grid.get_cell_list_contents(self.pos)
-        agents_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto))]
-        if len(agents_in_cell) > 1:
-            for agent in agents_in_cell:
-                agent.crashed = True
+        motos_in_cell = [obj for obj in cell_contents if isinstance(obj, (Car, Moto))]
+        if len(motos_in_cell) > 1:
+            for moto in motos_in_cell:
+                moto.crashed = True
+                print(f"Moto {moto.unique_id} cambió su estado a 'crashed' en la posición {self.pos}.")
     
     def recalculate_path(self):
         if self.destination_restaurante:
             self.path = self.calculate_path(self.pos, self.destination_restaurante.pos)
+            if not self.path:
+                print(f"Moto {self.unique_id} no encuentra un camino alternativo.")
+            else:
+                print(f"Moto {self.unique_id} ha recalculado su ruta.")
         else:
-            print(f"Moto {self.unique_id} no tiene un restaurante asignado para recalcular la ruta.")
+            print(f"Moto {self.unique_id} no tiene un destino asignado.")
 
     def step(self):
+        # Si la moto ha chocado, no se mueve.
         if self.crashed:
-            # Si la moto ha chocado, no se mueve
             return
 
+        # Si la moto ya ha llegado a su destino, no necesita hacer nada más.
         if self.has_arrived:
-            # Si la moto ya ha llegado a su destino, no necesita hacer nada más
             return
 
+        # Si no hay un camino definido, intenta calcular uno.
         if not self.path:
-            # Si no hay un camino definido, intenta calcular uno
             self.path = self.calculate_path(self.pos, self.destination_restaurante.pos)
             if not self.path:
-                # Si no puede encontrar un camino, busca un nuevo restaurante y calcula un camino hacia él
+                # Si no puede encontrar un camino, busca un nuevo restaurante y calcula un camino hacia él.
                 self.destination_restaurante = self.find_unique_restaurante()
                 if self.destination_restaurante:
                     self.path = self.calculate_path(self.pos, self.destination_restaurante.pos)
                 return
 
-        # Mueve la moto a lo largo del camino
+        # Mueve la moto a lo largo del camino.
         self.move()
 
+        # Comprueba si la moto ha llegado a su destino.
         if self.pos == self.destination_restaurante.pos:
-            # Si la moto llega a su destino, marca que ha llegado y ocupa el restaurante
+            # Si la moto llega a su destino, marca que ha llegado y ocupa el restaurante.
             self.has_arrived = True
             self.destination_restaurante.occupied = True
+
+        # Verificar choques después del movimiento.
+        self.check_for_crashes()
 
 class EmergencyVehicle(Agent):
     def __init__(self, unique_id, model, start_position, end_position):
@@ -919,7 +930,7 @@ class City(Model):
        self.place_roundabouts([(5, 12), (6, 12), (5, 11), (6, 11), (11, 12), (11, 11), (12, 12), (12, 11), (17, 12), (17, 11), (18, 12), (18, 11)])
 
        for restaurante_agent in self.restaurante_agents:
-        moto = Moto(self.next_id(), self, restaurante_agent, speed=3)  # Asumiendo velocidad 2 para las motos
+        moto = Moto(self.next_id(), self, restaurante_agent, speed=2)  # Asumiendo velocidad 2 para las motos
         if moto.destination_restaurante:
             self.grid.place_agent(moto, restaurante_agent.pos)
             self.schedule.add(moto)
@@ -1018,11 +1029,11 @@ def agent_portrayal(agent):
     if isinstance(agent, Car):
         color = "black" if agent.crashed else "pink"
         portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": color, "r": 0.3}
-    elif isinstance(agent, EmergencyVehicle):
-        portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": "purple", "r": 0.3}
     elif isinstance(agent, Moto):
         color = "black" if agent.crashed else "orange"
-        portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": "orange", "r": 0.3}
+        portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": color, "r": 0.3}
+    elif isinstance(agent, EmergencyVehicle):
+        portrayal = {"Shape": "circle", "Filled": "true", "Layer": 0, "Color": "purple", "r": 0.3}
     elif isinstance(agent, Restaurante):
         portrayal = {"Shape": "rect", "Filled": "true", "Layer": 0, "Color": "purple", "w": 1, "h": 1}
     elif isinstance(agent, Parking):
