@@ -54,7 +54,7 @@ public class AgentPositionUpdater : MonoBehaviour
         DontDestroyOnLoad(gameObject); // Asegúrate de que este GameObject persista entre escenas
 
         // Cargar GameObjects de coches
-        for (int i = 239; i <= 248; i++)
+        for (int i = 233; i <= 242; i++)
         {
             string carId = "car_" + i;
             GameObject carObject = GameObject.Find(carId);
@@ -64,7 +64,7 @@ public class AgentPositionUpdater : MonoBehaviour
             }
         }
         
-        for (int i = 7; i <= 31; i++)
+        for (int i = 7; i <= 25; i++)
         {
             string trafficLightId = "traffic_light_" + i;
             GameObject trafficLightObject = GameObject.Find(trafficLightId);
