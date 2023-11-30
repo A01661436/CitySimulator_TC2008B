@@ -278,7 +278,7 @@ class Moto(Agent):
 
             next_step = self.path[0]
 
-            if self.model.is_red_light(next_step) or self.is_cell_blocked(next_step):
+            if self.is_cell_blocked(next_step):
                 self.recalculate_path() 
                 break 
 
@@ -1028,14 +1028,14 @@ class City(Model):
         traffic_lights_data = [
                 ((10, 23), 'oeste'), 
                 ((10, 22), 'oeste'), 
-                ((6, 15), 'sur'), 
-                ((5, 15), 'sur'), 
-                ((11, 8), 'norte'), 
-                ((12, 8), 'norte'), 
+                ((6, 8), 'sur'), 
+                ((5, 8), 'sur'), 
+                ((11, 15), 'norte'), 
+                ((12, 15), 'norte'), 
                 ((21, 22), 'oeste'), 
                 ((21, 23), 'oeste'),
-                ((17, 15), 'sur'),
-                ((18, 15), 'sur'), 
+                ((17, 8), 'sur'),
+                ((18, 8), 'sur'), 
                 ((22, 2), 'sur'), 
                 ((23, 2), 'sur'), 
                 ((0, 21), 'norte'),
@@ -1085,6 +1085,9 @@ class City(Model):
         self.place_roundabouts([(5, 12), (6, 12), (5, 11), (6, 11), (11, 12), (11, 11), (12, 12), (12, 11), (17, 12), (17, 11), (18, 12), (18, 11)])
 
         self.send_car_positions_to_server()
+        self.send_moto_positions_to_server()
+        self.send_bus_positions_to_server()
+        self.send_ev_positions_to_server()
         self.send_initial_traffic_light_positions()
         self.send_traffic_light_states_to_server()
 
@@ -1195,6 +1198,18 @@ class City(Model):
     def send_car_positions_to_server(self):
         positions_data = {f"car_{car_agent.unique_id}": [car_agent.pos[0], car_agent.pos[1]] for car_agent in self.schedule.agents if isinstance(car_agent, Car)}
         requests.post("http://127.0.0.1:5000/update_car_positions", json=positions_data)
+    
+    def send_moto_positions_to_server(self):
+        positions_data = {f"moto_{car_agent.unique_id}": [car_agent.pos[0], car_agent.pos[1]] for car_agent in self.schedule.agents if isinstance(car_agent, Moto)}
+        requests.post("http://127.0.0.1:5000/update_moto_positions", json=positions_data)
+
+    def send_bus_positions_to_server(self):
+        positions_data = {f"bus_{car_agent.unique_id}": [car_agent.pos[0], car_agent.pos[1]] for car_agent in self.schedule.agents if isinstance(car_agent, Bus)}
+        requests.post("http://127.0.0.1:5000/update_bus_positions", json=positions_data)
+    
+    def send_ev_positions_to_server(self):
+        positions_data = {f"ev_{car_agent.unique_id}": [car_agent.pos[0], car_agent.pos[1]] for car_agent in self.schedule.agents if isinstance(car_agent, EmergencyVehicle)}
+        requests.post("http://127.0.0.1:5000/update_ev_positions", json=positions_data)
         
     def send_traffic_light_states_to_server(self):
         traffic_light_data = {
@@ -1219,6 +1234,9 @@ class City(Model):
                 print(f"Total de pasos para que todos los coches lleguen a sus destinos: {total_steps}")
                 self.running = False
         self.send_car_positions_to_server()  # Añadir esta línea al final de step
+        self.send_moto_positions_to_server()
+        self.send_bus_positions_to_server()
+        self.send_ev_positions_to_server()
         self.send_traffic_light_states_to_server()  # Añadir esta línea al final de step
 
 

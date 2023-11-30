@@ -3,19 +3,58 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # Almacenamos los datos de posición de los agentes
-agent_positions = {}
+car_positions = {}
+moto_positions = {}
+bus_positions = {}
+ev_positions = {}
 traffic_light_states = {}
 
 @app.route('/update_car_positions', methods=['POST'])
 def update_car_positions():
     data = request.json
-    agent_positions.update(data)
+    car_positions.update(data)
     return jsonify({"status": "success"})
 
 @app.route('/get_car_positions', methods=['GET'])
 def get_car_positions():
     # Convertirmos el diccionario en una lista de objetos para que Unity pueda procesarlo
-    positions_list = [{"id": key, "position": value} for key, value in agent_positions.items()]
+    positions_list = [{"id": key, "position": value} for key, value in car_positions.items()]
+    return jsonify(positions_list)
+
+@app.route('/update_moto_positions', methods=['POST'])
+def update_moto_positions():
+    data = request.json
+    moto_positions.update(data)
+    return jsonify({"status": "success"})
+
+@app.route('/get_moto_positions', methods=['GET'])
+def get_moto_positions():
+    # Convertirmos el diccionario en una lista de objetos para que Unity pueda procesarlo
+    positions_list = [{"id": key, "position": value} for key, value in moto_positions.items()]
+    return jsonify(positions_list)
+
+@app.route('/update_bus_positions', methods=['POST'])
+def update_bus_positions():
+    data = request.json
+    bus_positions.update(data)
+    return jsonify({"status": "success"})
+
+@app.route('/get_bus_positions', methods=['GET'])
+def get_bus_positions():
+    # Convertirmos el diccionario en una lista de objetos para que Unity pueda procesarlo
+    positions_list = [{"id": key, "position": value} for key, value in bus_positions.items()]
+    return jsonify(positions_list)
+
+@app.route('/update_ev_positions', methods=['POST'])
+def update_ev_positions():
+    data = request.json
+    ev_positions.update(data)
+    return jsonify({"status": "success"})
+
+@app.route('/get_ev_positions', methods=['GET'])
+def get_ev_positions():
+    # Convertirmos el diccionario en una lista de objetos para que Unity pueda procesarlo
+    positions_list = [{"id": key, "position": value} for key, value in ev_positions.items()]
     return jsonify(positions_list)
 
 @app.route('/get_traffic_light_states', methods=['GET'])

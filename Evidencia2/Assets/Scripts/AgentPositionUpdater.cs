@@ -15,8 +15,18 @@ public class CarPositionList
 {
     public CarPosition[] positions;
 }
+[System.Serializable]
+public class EVPosition
+{
+    public string id;
+    public float[] position; 
+}
 
-
+[System.Serializable]
+public class EVPositionList
+{
+    public EVPosition[] positions;
+}
 [System.Serializable]
 public class TrafficLightPosition
 {
@@ -47,6 +57,7 @@ public class AgentPositionUpdater : MonoBehaviour
 {
     // Creamos un diccionario para almacenar los GameObjects de los agentes Car y TrafficLight
     private Dictionary<string, GameObject> carObjects = new Dictionary<string, GameObject>();
+    private Dictionary<string, GameObject> evObjects = new Dictionary<string, GameObject>();
     private Dictionary<string, GameObject> trafficLightObjects = new Dictionary<string, GameObject>();
 
     void Start()
@@ -63,6 +74,17 @@ public class AgentPositionUpdater : MonoBehaviour
                 carObjects[carId] = carObject;
             }
         }
+
+        // Cargar GameObjects de coches
+        for (int i = 242; i <= 244; i++)
+        {
+            string evId = "ev_" + i;
+            GameObject evObject = GameObject.Find(evId);
+            if (evObject != null)
+            {
+                evObjects[evId] = evObject;
+            }
+        }
         
         for (int i = 7; i <= 25; i++)
         {
@@ -73,12 +95,13 @@ public class AgentPositionUpdater : MonoBehaviour
                 trafficLightObjects[trafficLightId] = trafficLightObject;
             }
         }
-        StartCoroutine(GetAgentPositions());
+        StartCoroutine(GetCarPositions());
+        StartCoroutine(GetEVPositions());
         StartCoroutine(SetInitialTrafficLightPositions());
         StartCoroutine(UpdateTrafficLightStates());
     }
 
-    IEnumerator GetAgentPositions()
+    IEnumerator GetCarPositions()
     {
         while (true)
         {
@@ -99,6 +122,34 @@ public class AgentPositionUpdater : MonoBehaviour
                     if (carObjects.TryGetValue(carPos.id, out GameObject carObject) && carObject != null && carPos.position != null && carPos.position.Length == 2)
                     {
                         carObject.transform.position = new Vector3(carPos.position[0], 0, carPos.position[1]);
+                    }
+                }
+            }
+            yield return new WaitForSeconds(1); // Tiempo de delay
+        }
+    }
+
+    IEnumerator GetEVPositions()
+    {
+        while (true)
+        {
+            // Obtenemos y actualizamos las posiciones de coches
+            UnityWebRequest www = UnityWebRequest.Get("http://127.0.0.1:5000/get_ev_positions");
+            yield return www.SendWebRequest();
+
+            if (www.result != UnityWebRequest.Result.Success)
+            {
+                Debug.Log(www.error);
+            }
+            else
+            {
+                string jsonString = www.downloadHandler.text;
+                EVPositionList evPositions = JsonUtility.FromJson<EVPositionList>("{\"positions\":" + jsonString + "}");
+                foreach (EVPosition evPos in evPositions.positions)
+                {
+                    if (evObjects.TryGetValue(evPos.id, out GameObject evObject) && evObject != null && evPos.position != null && evPos.position.Length == 2)
+                    {
+                        evObject.transform.position = new Vector3(evPos.position[0], 0, evPos.position[1]);
                     }
                 }
             }
